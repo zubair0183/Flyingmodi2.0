@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Election</title>
+    <!-- Tone.js is available on the canvas environment -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- FIREBASE CDN LINKS (Using standard v8 syntax for global access) -->
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #ffc107;
+            --bg-light: #f8f9fa;
+            --container-bg: #ffffff;
+            --text-color-dark: #343a40;
+            --canvas-bg: transparent; 
+            --win-color: #28a745;
+            --lose-color: #dc3545;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-light); 
+            display: flex;
+            flex-direction: column;
+            justify-content: center; 
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: var(--text-color-dark);
+            padding: 0; 
+            box-sizing: border-box;
+            overflow: hidden; 
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 90%;
+            max-width: 450px; 
+            height: calc(100vh - 120px); 
+            background: var(--container-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.05); 
+            padding: 1.5rem; 
+            border: 1px solid #e9ecef;
+            transition: all 0.3s ease-out;
+            position: relative; /* To position the toggle button absolutely */
+        }
+
+        @media (min-width: 768px) {
+            #game-container {
+                max-width: 600px;
+                height: 90vh; 
+                padding: 2rem;
+            }
+        }
+
+        canvas {
+            border-radius: 8px;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1); 
+            background-color: var(--canvas-bg);
+            touch-action: manipulation; 
+            background-image: url('bg.jpg'); 
+            background-size: cover;
+            background-position: center;
+            border: 1px solid #ced4da; 
+            width: 100%; 
+            flex-grow: 1; 
+        }
+
+        #score-display {
+            margin-bottom: 1.5rem;
+            font-size: 2.5rem; 
+            font-weight: 700;
+            color: var(--text-color-dark); 
+            text-shadow: 1px 1px 0 rgba(255, 193, 7, 0.3);
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 0.5rem;
+            width: 100%;
+            text-align: center;
+            background: transparent;
+        }
+
+        #high-score-display {
+            font-size: 1rem;
+            font-weight: 500;
+            color: #6c757d;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+
+        /* Music Toggle Button Styling */
+        #music-toggle {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.85);
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s ease;
+            z-index: 10;
+        }
+
+        #music-toggle:hover {
+            background: var(--primary-color);
+            color: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Modal Styles */
+        #message-box {
+            position: fixed; 
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9); 
+            display: none; justify-content: center; align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(2px); 
+        }
+        
+        .modal-content {
+            background: var(--container-bg);
+            border-radius: 10px;
+            padding: 35px 25px;
+            text-align: center;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15); 
+            color: var(--text-color-dark);
+            border: 2px solid var(--lose-color);
+            max-width: 380px;
+            width: 90%;
+            animation: modal-pop 0.3s ease-out;
+        }
+
+        @keyframes modal-pop {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+            font-size: 2.2rem;
+            color: var(--lose-color);
+            font-weight: 700;
+        }
+        
+        .modal-content.win {
+            box-shadow: 0 15px 35px rgba(40, 167, 69, 0.3);
+            border-color: var(--win-color);
+        }
+        .modal-content.win h2 {
+            color: var(--win-color);
+        }
+
+        .modal-content p {
+            font-size: 1.05rem;
+            margin: 1.2rem 0;
+            line-height: 1.5;
+        }
+
+        .btn {
+            padding: 14px 30px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s, opacity 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            width: 100%;
+            max-width: 350px; 
+            font-size: 1rem;
+            color: white;
+        }
+        
+        .btn-win { background-color: var(--win-color); box-shadow: 0 4px 0 #1e7e34; }
+        .btn-lose { background-color: var(--lose-color); box-shadow: 0 4px 0 #bd2130; }
+
+        .btn-win:active:not(:disabled), .btn-lose:active:not(:disabled) { transform: translateY(2px); }
+
+
+        /* --- Sticky Footer Styles --- */
+        .game-footer {
+            width: 100%;
+            padding: 10px 0; 
+            background-color: #e9ecef;
+            color: var(--text-color-dark); 
+            text-align: center;
+            border-top: 2px solid #ced4da;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            z-index: 900;
+        }
+
+        .footer-logo {
+            font-size: 1.2rem; 
+            font-weight: bold;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            color: var(--primary-color); 
+            text-transform: uppercase;
+        }
+
+        .footer-text {
+            font-size: 0.8rem; 
+            margin: 2px 0;
+        }
+
+        .footer-link {
+            color: var(--primary-color); 
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <button id="music-toggle" aria-label="Toggle Music On/Off">
+        <i class="fas fa-volume-mute"></i>
+    </button>
+    <div id="score-display">Seats: 0</div>
+    <div id="high-score-display">High Score: 0</div>
+    <canvas id="gameCanvas" width="400" height="533"></canvas> 
+</div>
+
+<!-- Modal used only for Game Over/Win -->
+<div id="message-box">
+    <div class="modal-content">
+        <h2 id="message-title"></h2>
+        <img id="gameOverImage" alt="Game Over/Win Screen" style="max-width: 80%; height: auto; border-radius: 6px; margin: 15px auto; display: none;">
+        <p id="message-content"></p>
+        <button id="messageBtn" class="btn btn-lose"></button>
+    </div>
+</div>
+
+<footer class="game-footer">
+    <div class="footer-logo">Flying Modi 2.0</div>
+    <div class="footer-text">Made with dedication by Zubair.</div>
+    <div class="footer-text">
+        Follow the creator on Instagram:
+        <a href="https://www.instagram.com/ntg.justzubair2" target="_blank" class="footer-link">@ntg.justzubair2</a>
+    </div>
+    <div class="footer-text" style="margin-top: 5px;">&copy; 2024. All Rights Reserved.</div>
+</footer>
+
+<script>
+    // --- FIREBASE GLOBAL VARIABLES (MANDATORY USE) ---
+    // Use the Canvas environment globals for security and configuration.
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    
+    // --- FIREBASE INSTANCES ---
+    let db;
+    let auth;
+    let userId = null;
+    let isAuthReady = false; 
+
+    // --- GAME CONFIGURATION & ASSETS ---
+    const GAME_CONFIG = {
+        BIRD_IMAGE_SRC: 'modiji.png', 
+        OBSTACLE_TEXTURE_SRC: 'pappuji.jpg', 
+        BG_MUSIC_SRC: 'music.m4a', 
+        GAME_OVER_SFX_SRC: 'bhojyam.mp3', 
+        GAME_OVER_IMAGE_SRC: 'over.png', 
+        WIN_SCORE: 235, 
+        GAME_OVER_TITLE: "ELECTION LOSS!",
+        GAME_OVER_CONTENT: (score) => `You won <b>${score} seats</b>. Try to reach ${GAME_CONFIG.WIN_SCORE} to form the government!`,
+        GAME_WIN_TITLE: "GOVERNMENT FORMED!",
+        GAME_WIN_CONTENT: (score) => `You secured <b>${score} seats</b>! You have won the majority!`,
+        INITIAL_MESSAGE_TITLE: "The Flappy Election",
+    };
+    const GAME_OVER_DELAY_MS = 2000;
+    const SEAT_TERM = "Seats"; 
+    
+    // --- DOM REFERENCES ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDisplay = document.getElementById('score-display');
+    const highScoreDisplay = document.getElementById('high-score-display');
+    const messageBox = document.getElementById('message-box');
+    const messageTitle = document.getElementById('message-title');
+    const messageContent = document.getElementById('message-content');
+    const messageBtn = document.getElementById('messageBtn');
+    const modalContent = document.querySelector('.modal-content');
+    const gameOverImageEl = document.getElementById('gameOverImage');
+    const musicToggleButton = document.getElementById('music-toggle'); // New DOM element
+    
+    // --- GAME STATE & CONSTANTS ---
+    let CANVAS_WIDTH;
+    let CANVAS_HEIGHT;
+    let gameState = 'loading';
+    let score = 0;
+    let currentHighScore = 0;
+    let animationFrameId;
+    let audioContextStarted = false;
+    let isMusicOn = false; // New state for music toggle
+
+    // Assets & Audio Instances
+    let obstacleTextureImage = new Image(); 
+    let backgroundMusic; // Tone.Player
+    let jumpSynth, gameOverPlayer; 
+    
+    // Bird Object (modiji.png)
+    const bird = { x: 50, y: 0, size: 60, velocity: 0, gravity: 0.35, jumpStrength: -5, image: new Image() };
+    bird.image.src = GAME_CONFIG.BIRD_IMAGE_SRC; 
+
+    // Obstacle setup
+    const OBSTACLE_WIDTH = 60;
+    const OBSTACLE_GAP = 190;
+    const INITIAL_OBSTACLE_SPEED = 2.5; 
+    let OBSTACLE_SPEED = INITIAL_OBSTACLE_SPEED;
+    const SPEED_INCREASE_INTERVAL = 10; 
+    const SPEED_INCREASE_AMOUNT = 0.25; 
+    const MAX_OBSTACLE_SPEED = 6.0; 
+    let obstacleGenerationTimer = 0;
+    const OBSTACLE_FREQUENCY = 120;
+    let obstacles = [];
+    
+    // --- FIREBASE FUNCTIONS ---
+
+    function getScoreDocRef() {
+        if (!db || !userId) {
+            console.error("Firestore or User ID not available.");
+            return null;
+        }
+        return db.collection('artifacts')
+            .doc(appId)
+            .collection('users')
+            .doc(userId)
+            .collection('game_scores')
+            .doc('flappy_election_score');
+    }
+    
+    async function loadHighScore() {
+        if (!isAuthReady) {
+            console.log("Authentication not ready, skipping high score load.");
+            return;
+        }
+
+        const scoreRef = getScoreDocRef();
+        if (!scoreRef) return;
+
+        try {
+            const docSnap = await scoreRef.get();
+            if (docSnap.exists) {
+                const data = docSnap.data();
+                currentHighScore = data.highScore || 0;
+            } else {
+                currentHighScore = 0;
+            }
+            updateHighScoreDisplay();
+        } catch (error) {
+            console.error("Error loading high score:", error);
+        }
+    }
+
+    async function saveHighScore() {
+        if (!isAuthReady || score <= currentHighScore) {
+            return;
+        }
+
+        const scoreRef = getScoreDocRef();
+        if (!scoreRef) return;
+        
+        currentHighScore = score;
+        updateHighScoreDisplay();
+
+        try {
+            await scoreRef.set({
+                highScore: currentHighScore,
+                lastUpdated: firebase.firestore.Timestamp.now(),
+                userId: userId 
+            });
+        } catch (error) {
+            console.error("Error saving high score:", error);
+        }
+    }
+
+    function updateHighScoreDisplay() {
+        highScoreDisplay.textContent = `High Score: ${currentHighScore}`;
+    }
+
+    async function initializeFirebaseAndAuth() {
+        try {
+            if (typeof firebase === 'undefined' || !firebase.firestore || !firebase.auth || !Object.keys(firebaseConfig).length) {
+                console.warn("Firebase SDK not fully loaded or config missing. Running game without persistence.");
+                isAuthReady = true;
+                return; 
+            }
+
+            const app = firebase.initializeApp(firebaseConfig);
+            db = app.firestore();
+            auth = app.auth();
+
+            auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    isAuthReady = true;
+                    await loadHighScore();
+                } else {
+                    if (initialAuthToken) {
+                        auth.signInWithCustomToken(initialAuthToken).catch(e => {
+                            console.error("Custom token sign-in failed, trying anonymous.", e);
+                            auth.signInAnonymously();
+                        });
+                    } else {
+                        auth.signInAnonymously();
+                    }
+                }
+            });
+        } catch (error) {
+            console.error("Failed to initialize Firebase:", error);
+            isAuthReady = true; 
+        } finally {
+            if (gameState === 'loading') {
+                initialMessage();
+            }
+        }
+    }
+    
+    // --- AUDIO SETUP ---
+    function setupAudio() {
+        if (typeof Tone === 'undefined') return;
+        
+        // Setup sound effects
+        jumpSynth = new Tone.MembraneSynth({
+            "pitchDecay": 0.05,
+            "octaves": 4,
+            "envelope": { "attack": 0.001, "decay": 0.4, "sustain": 0.01 }
+        }).toDestination();
+        
+        gameOverPlayer = new Tone.Player({
+            url: GAME_CONFIG.GAME_OVER_SFX_SRC,
+            autostart: false,
+            volume: -6 
+        }).toDestination();
+
+        // Setup background music (Starts muted by default)
+        backgroundMusic = new Tone.Player({
+            url: GAME_CONFIG.BG_MUSIC_SRC,
+            loop: true,
+            volume: -10 
+        }).toDestination();
+    }
+    
+    // --- MUSIC CONTROLS ---
+
+    function updateMusicIcon() {
+        const icon = musicToggleButton.querySelector('i');
+        icon.classList.remove('fa-volume-up', 'fa-volume-mute');
+        icon.classList.add(isMusicOn ? 'fa-volume-up' : 'fa-volume-mute');
+    }
+
+    async function toggleMusic() {
+        // 1. Ensure Audio Context is unlocked on interaction
+        if (!audioContextStarted) {
+            try {
+                await Tone.start();
+                audioContextStarted = true;
+            } catch (error) {
+                console.error("Failed to start Tone Audio Context on toggle:", error);
+                // Cannot proceed if context fails to start
+                return;
+            }
+        }
+
+        // 2. Toggle state and play/stop music
+        isMusicOn = !isMusicOn;
+        updateMusicIcon();
+
+        if (isMusicOn) {
+            if (backgroundMusic && backgroundMusic.loaded && backgroundMusic.state !== 'started') {
+                backgroundMusic.start();
+            }
+        } else {
+            if (backgroundMusic && backgroundMusic.state === 'started') {
+                backgroundMusic.stop();
+            }
+        }
+    }
+
+    function playJump() {
+         // Only requires audioContextStarted for sound effects
+         if (jumpSynth && audioContextStarted) {
+             jumpSynth.triggerAttackRelease("C4", "8n");
+         }
+    }
+    
+    function playGameOver() {
+        if (gameOverPlayer && gameOverPlayer.loaded && audioContextStarted) { 
+             gameOverPlayer.stop(); 
+             gameOverPlayer.start(0); 
+        }
+    }
+
+    function stopMusic() {
+        if (backgroundMusic && backgroundMusic.state === 'started') {
+            backgroundMusic.stop();
+        }
+    }
+
+    // --- DRAWING FUNCTIONS ---
+    function drawBird() {
+        if (!CANVAS_WIDTH || !CANVAS_HEIGHT) return; 
+        
+        ctx.save();
+        const halfSize = bird.size / 2;
+        const tilt = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, bird.velocity * 0.05));
+        
+        ctx.translate(bird.x, bird.y);
+        ctx.rotate(tilt);
+
+        if (bird.image.complete && bird.image.naturalHeight !== 0) {
+            ctx.drawImage(bird.image, -halfSize, -halfSize, bird.size, bird.size);
+        } else {
+            ctx.fillStyle = '#FFD700'; 
+            ctx.beginPath();
+            ctx.arc(0, 0, halfSize, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    // --- OBSTACLE CLASS ---
+    class Obstacle {
+        constructor(x, gapY) {
+            this.x = x;
+            this.gapY = gapY; 
+            this.width = OBSTACLE_WIDTH;
+            this.passed = false;
+            
+            this.topHeight = gapY - OBSTACLE_GAP / 2;
+            this.bottomY = gapY + OBSTACLE_GAP / 2;
+        }
+
+        update() {
+            this.x -= OBSTACLE_SPEED;
+        }
+
+        draw() {
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            
+            ctx.strokeStyle = '#0056b3';
+            ctx.lineWidth = 3;
+            
+            const useImage = obstacleTextureImage && obstacleTextureImage.complete && obstacleTextureImage.naturalHeight !== 0;
+            const fillStyle = '#1c7ed6'; 
+
+            const drawPart = (y, h) => {
+                if (h <= 0) return;
+                
+                if (useImage) { 
+                    ctx.drawImage(obstacleTextureImage, this.x, y, this.width, h);
+                } else {
+                    ctx.fillStyle = fillStyle;
+                    ctx.fillRect(this.x, y, this.width, h);
+                }
+                
+                ctx.strokeRect(this.x, y, this.width, h);
+            };
+
+            drawPart(0, this.topHeight);
+            drawPart(this.bottomY, CANVAS_HEIGHT - this.bottomY);
+            
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+        }
+
+        isOffScreen() {
+            return this.x + this.width < 0;
+        }
+    }
+
+    // --- GAME LOGIC ---
+
+    function resetGame() {
+        resizeCanvas(); 
+        bird.y = CANVAS_HEIGHT / 2; 
+        
+        bird.velocity = 0;
+        score = 0;
+        OBSTACLE_SPEED = INITIAL_OBSTACLE_SPEED;
+        scoreDisplay.textContent = `${SEAT_TERM}: ${score}`;
+        updateHighScoreDisplay(); 
+        obstacles = [];
+        obstacleGenerationTimer = 0;
+    }
+    
+    function startGame() {
+        if (gameState !== 'playing') {
+            resetGame();
+            if (isMusicOn) {
+                backgroundMusic.start();
+            }
+            gameState = 'playing';
+            
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            animationFrameId = requestAnimationFrame(gameLoop); 
+        }
+    }
+    
+    async function handleJump() {
+        // 1. Ensure Audio Context is unlocked on interaction
+        if (!audioContextStarted) {
+            try {
+                await Tone.start();
+                audioContextStarted = true;
+            } catch (error) {
+                 console.error("Failed to start Tone Audio Context on jump:", error);
+            }
+        }
+        
+        if (gameState === 'ready') {
+            startGame();
+        } 
+        
+        if (gameState === 'playing') {
+            bird.velocity = bird.jumpStrength;
+            playJump();
+        }
+    }
+
+    function updateGameObjects() {
+        bird.velocity += bird.gravity;
+        bird.y += bird.velocity;
+        
+        if (bird.y - bird.size / 2 < 0) {
+            bird.y = bird.size / 2;
+            bird.velocity = 0;
+        }
+        
+        obstacleGenerationTimer++;
+        const currentFrequency = OBSTACLE_FREQUENCY * (INITIAL_OBSTACLE_SPEED / OBSTACLE_SPEED); 
+        
+        if (obstacleGenerationTimer > currentFrequency) {
+            const minGapY = OBSTACLE_GAP * 0.8;
+            const maxGapY = CANVAS_HEIGHT - (OBSTACLE_GAP * 0.8);
+            const gapY = Math.random() * (maxGapY - minGapY) + minGapY;
+            obstacles.push(new Obstacle(CANVAS_WIDTH, gapY));
+            obstacleGenerationTimer = 0;
+        }
+
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            const obs = obstacles[i];
+            obs.update();
+
+            if (obs.x + obs.width < bird.x - bird.size / 2 && !obs.passed) {
+                score++;
+                obs.passed = true;
+                scoreDisplay.textContent = `${SEAT_TERM}: ${score}`;
+                
+                if (score > currentHighScore) {
+                     highScoreDisplay.textContent = `High Score: ${score} (New!)`;
+                }
+
+                if (score > 0 && score % SPEED_INCREASE_INTERVAL === 0 && OBSTACLE_SPEED < MAX_OBSTACLE_SPEED) { 
+                    OBSTACLE_SPEED = Math.min(MAX_OBSTACLE_SPEED, OBSTACLE_SPEED + SPEED_INCREASE_AMOUNT);
+                }
+                
+                if (score >= GAME_CONFIG.WIN_SCORE) {
+                    gameWin();
+                    return;
+                }
+            }
+            
+            if (obs.isOffScreen()) {
+                obstacles.splice(i, 1);
+            }
+        }
+    }
+    
+    function checkCollisions() {
+        if (bird.y + bird.size / 2 >= CANVAS_HEIGHT) {
+            bird.y = CANVAS_HEIGHT - bird.size / 2;
+            return true;
+        }
+        
+        for (const obs of obstacles) {
+            if (bird.x + bird.size / 2 > obs.x && bird.x - bird.size / 2 < obs.x + obs.width) {
+                const topCollision = bird.y - bird.size / 2 < obs.topHeight;
+                const bottomCollision = bird.y + bird.size / 2 > obs.bottomY;
+                if (topCollision || bottomCollision) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // --- GAME END SCREENS ---
+    
+    function showMessageScreen(title, content, isWin) {
+        if (score > currentHighScore) {
+            saveHighScore();
+        }
+
+        gameState = 'gameover';
+        stopMusic(); 
+        cancelAnimationFrame(animationFrameId); 
+
+        modalContent.classList.toggle('win', isWin);
+        messageTitle.textContent = title;
+        messageContent.innerHTML = content(score) + (isWin ? "" : `<br>Your best: <b>${currentHighScore} seats</b>.`);
+        
+        gameOverImageEl.style.display = 'block';
+
+        messageBtn.textContent = "Wait...";
+        messageBtn.classList.remove('btn-primary', 'btn-win', 'btn-lose');
+        messageBtn.classList.add(isWin ? 'btn-win' : 'btn-lose');
+        messageBtn.disabled = true;
+        messageBox.style.display = 'flex'; 
+
+        setTimeout(() => {
+            messageBtn.textContent = isWin ? "Play Again" : "Try Again";
+            messageBtn.disabled = false;
+            messageBtn.onclick = initialMessage; 
+        }, GAME_OVER_DELAY_MS); 
+    }
+
+    function gameWin() {
+        showMessageScreen(
+            GAME_CONFIG.GAME_WIN_TITLE, 
+            GAME_CONFIG.GAME_WIN_CONTENT, 
+            true
+        );
+    }
+
+    function gameOver() {
+        playGameOver();
+        showMessageScreen(
+            GAME_CONFIG.GAME_OVER_TITLE, 
+            GAME_CONFIG.GAME_OVER_CONTENT, 
+            false
+        );
+    }
+    
+    // --- READY SCREEN DRAWING (On Canvas) ---
+    function drawReadyScreen() {
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        
+        drawBird();
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+
+        // Title
+        ctx.font = '700 30px Inter';
+        ctx.fillText(GAME_CONFIG.INITIAL_MESSAGE_TITLE, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 3);
+
+        // Instructions
+        ctx.font = '400 18px Inter';
+        ctx.fillText("Tap screen or press SPACE to start campaign", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 3 + 40);
+
+        // Goal
+        ctx.font = '400 16px Inter';
+        ctx.fillText(`Goal: Secure ${GAME_CONFIG.WIN_SCORE} seats!`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 3 + 80);
+
+        if (gameState === 'ready') {
+            animationFrameId = requestAnimationFrame(drawReadyScreen);
+        }
+    }
+
+    // --- INITIALIZATION ---
+    function initialMessage() {
+        gameState = 'ready';
+        messageBox.style.display = 'none';
+        resetGame();
+        drawReadyScreen(); 
+    }
+
+    // --- MAIN GAME LOOP ---
+    function gameLoop() {
+        if (gameState !== 'playing') { return; }
+
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        updateGameObjects();
+
+        if (checkCollisions()) {
+            gameOver();
+            return;
+        }
+
+        for (const obs of obstacles) {
+            obs.draw();
+        }
+        drawBird();
+        
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
+    
+    // --- RESIZE LOGIC ---
+    function resizeCanvas() {
+        const container = document.getElementById('game-container');
+        const scoreHeight = document.getElementById('score-display').offsetHeight;
+        const availableHeight = container.clientHeight - scoreHeight - 20; 
+
+        let calculatedWidth = container.clientWidth - 32;
+        let calculatedHeight = calculatedWidth * (4/3); 
+        
+        if (calculatedHeight > availableHeight) {
+             calculatedHeight = availableHeight;
+             calculatedWidth = calculatedHeight * (3/4);
+        }
+        
+        CANVAS_WIDTH = Math.max(250, calculatedWidth);
+        CANVAS_HEIGHT = Math.max(333, calculatedHeight); 
+
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+        
+        bird.y = CANVAS_HEIGHT / 2;
+        bird.x = CANVAS_WIDTH * 0.125;
+    }
+
+    // --- START UP ---
+    window.onload = function () {
+        setupAudio();
+        updateMusicIcon(); // Set initial muted icon
+        obstacleTextureImage.src = GAME_CONFIG.OBSTACLE_TEXTURE_SRC; 
+        gameOverImageEl.src = GAME_CONFIG.GAME_OVER_IMAGE_SRC;
+        
+        resizeCanvas();
+        initializeFirebaseAndAuth(); 
+        musicToggleButton.addEventListener('click', toggleMusic);
+    };
+
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        if (gameState !== 'playing') {
+            initialMessage();
+        }
+    });
+
+    // Unified input handler
+    const unifiedInputHandler = (e) => {
+        if (e.type === 'keydown' && (e.code === 'Space' || e.key === ' ')) {
+            e.preventDefault(); 
+        } else if (e.type === 'touchstart') {
+            e.preventDefault();
+        }
+        
+        if (gameState === 'ready' || gameState === 'playing') {
+            handleJump();
+        }
+    };
+
+    document.addEventListener('keydown', unifiedInputHandler);
+    canvas.addEventListener('touchstart', unifiedInputHandler);
+</script>
+
+</body>
+</html>
